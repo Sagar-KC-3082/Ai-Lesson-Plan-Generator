@@ -66,7 +66,7 @@ class StoragePermissionHandler {
     try {
       // Check if external storage is available
       final externalDir = await ExternalPath.getExternalStoragePublicDirectory(
-        ExternalPath.DIRECTORY_DOWNLOADS,
+        ExternalPath.DIRECTORY_DOWNLOAD,
       );
       return externalDir != null && externalDir.isNotEmpty;
     } catch (e) {

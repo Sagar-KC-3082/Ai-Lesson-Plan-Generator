@@ -1,3 +1,4 @@
+/*
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -79,7 +80,7 @@ class DownloadUtils {
           // First try: External Downloads directory
           try {
             directoryPath = await ExternalPath.getExternalStoragePublicDirectory(
-              ExternalPath.DIRECTORY_DOWNLOADS,
+              ExternalPath.DIRECTORY_DOWNLOAD,
             );
             print('External Downloads path: $directoryPath');
           } catch (e) {
@@ -613,3 +614,4 @@ class DownloadUtils {
     return chunks;
   }
 }
+*/

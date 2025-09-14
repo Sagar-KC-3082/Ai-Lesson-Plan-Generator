@@ -1,12 +1,13 @@
-import 'dart:convert'; // for jsonDecode
 import 'dart:developer';
+import 'package:ai_lesson_plan_generator/core/base_class/failure_response.dart';
+import 'package:ai_lesson_plan_generator/features/home/model/lesson_details_response.dart';
+import 'package:ai_lesson_plan_generator/features/home/model/lesson_list_response.dart';
+import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:dartz/dartz.dart';
+import 'package:hive/hive.dart';
 
-import '../../../core/base_class/failure_response.dart';
-import '../model/lesson_request.dart';
-import '../model/lesson_response.dart';
+import '../presentation/lesson_list_screen.dart';
 
 final homeScreenRepositoryProvider = Provider<HomescreenRepository>((ref) {
   return HomescreenRepository(ref);
@@ -14,114 +15,149 @@ final homeScreenRepositoryProvider = Provider<HomescreenRepository>((ref) {
 
 class HomescreenRepository {
   final Ref _ref;
+
   HomescreenRepository(this._ref);
 
-  Future<Either<LessonResponse, FailureResponse>> fetchLessonResponse({
-    required LessonRequest lessonRequest,
-  }) async {
+  /// Opens Hive box
+  Future<Box> get lessonListBox async => await Hive.openBox('lessonListBox');
+
+  /// Converts dynamic maps/lists to Map<String, dynamic> / List recursively
+  dynamic _convertDynamicMap(dynamic value) {
+    if (value is Map) {
+      return value.map<String, dynamic>(
+        (k, v) => MapEntry(k.toString(), _convertDynamicMap(v)),
+      );
+    } else if (value is List) {
+      return value.map((e) => _convertDynamicMap(e)).toList();
+    } else {
+      return value;
+    }
+  }
+
+  /// Fetch lesson list for a topic from API or cache
+  Future<Either<LessonListResponse, FailureResponse>> fetchLessonList(
+      String topicName) async {
     try {
+      final box = await Hive.openBox('lessonListBox');
+      final cachedData = box.get(topicName.trim().toLowerCase());
+      if (cachedData != null) {
+        final safeMap = _convertDynamicMap(cachedData) as Map<String, dynamic>;
+        return Left(LessonListResponse.fromJson(safeMap));
+      }
+
       final apiClient = Dio();
       final response = await apiClient.post(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
-        options: Options(
-          headers: {
-            "Content-Type": "application/json",
-            "X-goog-api-key": "AIzaSyDQmV0QHLaUbDt2y_8y2c2KQjtZ1zug5Eo",
-          },
-        ),
-        data: {
-          "contents": [
-            {
-              "parts": [
-                {
-                  "text": """
-Generate a day-to-day lesson plan for the subject: ${lessonRequest.subjectName}.  
-
-Constraints:
-- Duration: ${lessonRequest.days} days
-- Hours per day: ${lessonRequest.hours}
-- Additional teacher input: ${lessonRequest.additionalInfo ?? "None"}
-
-IMPORTANT: Return ONLY the raw JSON without any markdown formatting, code blocks, or additional text.
-
-JSON structure:
-{
-  "theme": "string",
-  "overview": "string",
-  "days": [
-    {
-      "dayNumber": 1,
-      "sessions": [
-        {
-          "hour": 1,
-          "topic": "string",
-          "objectives": ["string","string"],
-          "activities": ["string","string"],
-          "materials": ["string","string"]
-        }
-      ]
-    }
-  ]
-}
-"""
-
-                }
-              ]
-            }
-          ]
-        },
+        "https://agent.technologychannel.org/webhook/create-course-topic",
+        data: {"topic": topicName.trim()},
+        options: Options(headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key':
+              "2y\$10\$WXbDae2EDkEWGcnxzSvoY.aFRqCNdDq6WKq.q8wv8DFdioGPpiALu",
+        }),
       );
-      String rawText =
-          response.data["candidates"][0]["content"]["parts"][0]["text"];
-      // Strip ```json or ``` code fences with more robust regex
-      rawText = rawText
-          .replaceAll(RegExp(r'^```(?:json)?\s*', multiLine: true), '') // Remove opening ```json or ``` at start
-          .replaceAll(RegExp(r'```\s*$', multiLine: true), '') // Remove closing ``` at end
-          .trim();
-      LessonResponse data;
-      try {
-        final Map<String, dynamic> jsonData = jsonDecode(rawText);
-        data = LessonResponse.fromJson(jsonData);
-      } catch (e) {
-        try {
-          final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(rawText);
-          if (jsonMatch != null) {
-            final extractedJson = jsonMatch.group(0);
-            final Map<String, dynamic> jsonData = jsonDecode(extractedJson!);
-            // Validate that the JSON has the expected structure
-            if (jsonData.containsKey('days') && jsonData['days'] is List) {
-              data = LessonResponse.fromJson(jsonData);
-            } else {
-              throw Exception('Extracted JSON does not contain valid lesson plan structure');
-            }
-          } else {
-            throw Exception('No JSON pattern found in response');
-          }
-        } catch (extractError) {
-          data = LessonResponse.fromRawText(rawText);
-        }
-      }
 
-      return Left(data);
+      final lessonListResponse =
+          LessonListResponse.fromJson(response.data).copyWith(
+        topicName: topicName,
+        cachedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      await box.put(topicName.trim().toLowerCase(), Map<String, dynamic>.from(lessonListResponse.toJson()));
+
+      return Left(lessonListResponse);
     } catch (e) {
-      if (e is DioException) {
-        // Check if server responded with an error body
-        final statusCode = e.response?.statusCode;
-        final responseData = e.response?.data;
-
-        log("DioException caught!");
-        log("Status code: $statusCode");
-        log("Error data: $responseData");
-
-        // If Gemini returns JSON like { "error": { "message": "...", "status": "UNAVAILABLE" } }
-        final apiMessage =
-            (responseData is Map && responseData["error"] != null)
-                ? responseData["error"]["message"]
-                : e.message;
-        log("Error message : $apiMessage");
-        return Right(FailureResponse(apiMessage));
-      }
       return Right(FailureResponse.getErrorMessage(e));
+    }
+  }
+
+  Future<Either<LessonDetailsResponse, FailureResponse>> fetchLessonDetails({
+    required Lesson lessonRequest,
+    required String topicName,
+  }) async {
+    try {
+      final box = await Hive.openBox('lessonListBox');
+      final apiClient = Dio();
+
+      final response = await apiClient.post(
+        "https://agent.technologychannel.org/webhook/skill-ai-content",
+        data: {
+          "topic": lessonRequest.lesson,
+          "subtopic": lessonRequest.topic,
+          "description": lessonRequest.description,
+        },
+        options: Options(headers: {
+          'X-API-Key':
+          "2y\$10\$WXbDae2EDkEWGcnxzSvoY.aFRqCNdDq6WKq.q8wv8DFdioGPpiALu",
+        }),
+      );
+
+      final lessonDetailsResponse = LessonDetailsResponse.fromJson(response.data);
+
+      // ✅ Read the existing provider first
+      final lessonListResponse = _ref.read(lessonListProvider);
+
+      // Merge details into the existing lesson
+      final updatedLessons = lessonListResponse.message?.map((lesson) {
+        if (lesson.lesson == lessonRequest.lesson) {
+          return lesson.copyWith(details: lessonDetailsResponse);
+        }
+        return lesson;
+      }).toList();
+
+      // Updated list response with cachedAt (preserve topic-level cachedAt)
+      final updatedListResponse = lessonListResponse.copyWith(
+        message: updatedLessons,
+        cachedAt: lessonListResponse.cachedAt ?? DateTime.now().millisecondsSinceEpoch,
+      );
+
+      // ✅ Update provider
+      _ref.read(lessonListProvider.notifier).state = updatedListResponse;
+
+      // ✅ Persist to Hive
+      await box.put(topicName.trim().toLowerCase(), updatedListResponse.toJson());
+
+      return Left(lessonDetailsResponse);
+    } catch (e) {
+      return Right(FailureResponse.getErrorMessage(e));
+    }
+  }
+
+
+  /// Get all cached lesson lists (topics), latest stored first
+  Future<List<LessonListResponse>> getAllCachedLessonLists() async {
+    try {
+      final box = await Hive.openBox('lessonListBox');
+      List<LessonListResponse> result = [];
+
+      for (var cachedData in box.values) {
+        final safeMap = _convertDynamicMap(cachedData) as Map<String, dynamic>;
+        result.add(LessonListResponse.fromJson(safeMap));
+      }
+
+      // ✅ Sort by cachedAt (latest first)
+      result.sort((a, b) => (b.cachedAt ?? 0).compareTo(a.cachedAt ?? 0));
+
+      return result;
+    } catch (e) {
+      print("Error fetching all cached lessons: $e");
+      return [];
+    }
+  }
+
+  /// Get cached lesson list for a specific topic
+  Future<LessonListResponse?> getCachedLessonListForTopic(
+      String topicName) async {
+    try {
+      final box = await Hive.openBox('lessonListBox');
+      final cachedData = box.get(topicName.trim().toLowerCase());
+      if (cachedData != null) {
+        final safeMap = _convertDynamicMap(cachedData) as Map<String, dynamic>;
+        return LessonListResponse.fromJson(safeMap);
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching cached lesson for topic $topicName: $e");
+      return null;
     }
   }
 }
