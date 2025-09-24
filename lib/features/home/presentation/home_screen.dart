@@ -42,6 +42,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
+  void _fetchCachedLessons() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(downloadedLessonsController.notifier).getCachedLessonList();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final fetchLessonApiState = ref.watch(fetchLessonController);
@@ -53,6 +59,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             builder: (context) => LessonListScreen(
                   topicName: _topicNameController.text,
                 )));
+        _fetchCachedLessons();
       } else if (next is FailureState) {
         context.showToast(message: next.failureResponse.errorMessage);
       }
@@ -103,11 +110,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   await _fetchLessonListLogic(context);
                 },
               ),
+              DownloadedTopicListScreen()
             ],
           ),
         ),
       ),
-      floatingActionButton: CustomInkWell(
+/*      floatingActionButton: CustomInkWell(
         onTap: () {
           FocusScope.of(context).requestFocus(FocusNode());
           Navigator.of(context).push(MaterialPageRoute(
@@ -124,7 +132,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             size: 30,
           ),
         ),
-      ),
+      ),*/
     );
   }
 

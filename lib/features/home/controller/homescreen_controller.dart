@@ -1,5 +1,6 @@
 import 'package:ai_lesson_plan_generator/features/home/model/lesson_details_response.dart';
 import 'package:ai_lesson_plan_generator/features/home/model/lesson_list_response.dart';
+import 'package:ai_lesson_plan_generator/features/home/presentation/downloaded_topic_list_screen.dart';
 import 'package:ai_lesson_plan_generator/features/home/repository/homescreen_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -28,7 +29,7 @@ class HomeScreenController extends StateNotifier<BaseState> {
       (failure) => FailureState(failureResponse: failure),
     );
   }
-
+/*
   Future<void> fetchLessonDetails({
     required Lesson lessonRequest,
     required String topicName,
@@ -53,13 +54,14 @@ class HomeScreenController extends StateNotifier<BaseState> {
         _ref.read(lessonListProvider.notifier).state =
             currentList.copyWith(message: updatedLessons);
 
+
         state = SuccessState<LessonDetailsResponse>(data: lessonDetails);
       },
       (failure) {
         state = FailureState(failureResponse: failure);
       },
     );
-  }
+  }*/
 
   /// Returns the full LessonListResponse for a given topic from Hive cache
   Future<void> getCachedLessonList() async {
@@ -97,6 +99,7 @@ class HomeScreenController extends StateNotifier<BaseState> {
       // ✅ Persist exact provider state to Hive
       final box = await _homeScreenRepo.lessonListBox;
       await box.put(topicName.trim().toLowerCase(), updatedListResponse.toJson());
+
     } catch (e) {
       print("Error marking lesson completed: $e");
     }
@@ -147,6 +150,8 @@ class HomeScreenController extends StateNotifier<BaseState> {
       final box = await _homeScreenRepo.lessonListBox;
       await box.put(topicName.trim().toLowerCase(), updatedList.toJson());
 
+      /// This is to update the cached lesson in homescreen...
+      _ref.read(downloadedLessonsController.notifier).getCachedLessonList();
       // 6️⃣ Set state to success so UI updates
       state = SuccessState<LessonDetailsResponse>(data: lessonDetailsResponse);
     }, (failure) {

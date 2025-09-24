@@ -33,7 +33,6 @@ class DownloadedTopicWidget extends ConsumerWidget {
       onTap: () {
         // Open first lesson
         if (lesson.message != null && lesson.message!.isNotEmpty) {
-          final firstLesson = lesson.message!.first;
           ref.read(lessonListProvider.notifier).state = lesson;
           Navigator.push(
             context,

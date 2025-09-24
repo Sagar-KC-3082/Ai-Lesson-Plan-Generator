@@ -174,22 +174,12 @@ class _LessonDetailsScreenState extends ConsumerState<LessonDetailsScreen> {
                     }
                   }
                   print('Step 1 ');
-                  if (widget.isFromDownloadedFlow) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) async {
-                      print('Step 2 ');
-
-                      await ref
-                          .read(downloadedLessonsController.notifier)
-                          .getCachedLessonList();
-                      print('Step 3 ');
-
-                      Navigator.pop(context);
-                    });
-                  } else {
-                    print('Step 4 ');
-
-                    Navigator.pop(context);
-                  }
+                  WidgetsBinding.instance.addPostFrameCallback((_) async {
+                    await ref
+                        .read(downloadedLessonsController.notifier)
+                        .getCachedLessonList();
+                  });
+                  Navigator.pop(context);
                 },
                 label: 'Mark as completed',
               ),
